@@ -22,7 +22,7 @@ jobs:
           node-version: '20'
 
       - name: Test
-        run: node --test "test/**/*.test.mjs"
+        run: node --test
 
       - name: Pack
         run: |

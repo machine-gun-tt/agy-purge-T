@@ -19,10 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-Attribution note (see NOTICE.md): the methodology and product shape of this
-project derive from dsh-purge (https://github.com/YuJunZhiXue/dsh-purge, MIT).
-This project is an independent implementation for Google Antigravity and
-contains no code from that project.
