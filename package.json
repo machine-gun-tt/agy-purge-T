@@ -52,11 +52,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/skywalkerTT/agy-purge-T.git"
+    "url": "git+https://github.com/machine-gun-tt/agy-purge-T.git"
   },
-  "homepage": "https://github.com/skywalkerTT/agy-purge-T#readme",
+  "homepage": "https://github.com/machine-gun-tt/agy-purge-T#readme",
   "bugs": {
-    "url": "https://github.com/skywalkerTT/agy-purge-T/issues"
+    "url": "https://github.com/machine-gun-tt/agy-purge-T/issues"
   },
   "engines": {
     "node": ">=18"

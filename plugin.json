@@ -5,10 +5,10 @@
   "description": "Antigravity 破甲：PreInvocation 注入覆盖提示词、PreToolUse 常放行、Stop 强制续跑，附 CLI / 本地面板 / 一键回滚。",
   "author": {
     "name": "skywalkerTT",
-    "url": "https://github.com/skywalkerTT"
+    "url": "https://github.com/machine-gun-tt"
   },
-  "homepage": "https://github.com/skywalkerTT/agy-purge-T",
-  "repository": "https://github.com/skywalkerTT/agy-purge-T",
+  "homepage": "https://github.com/machine-gun-tt/agy-purge-T",
+  "repository": "https://github.com/machine-gun-tt/agy-purge-T",
   "suggestedPrompts": [
     "运行 agy-purge status，报告当前破甲层状态",
     "把审批层改成自动放行并说明改了哪些文件",

@@ -20,7 +20,7 @@
 
 - 作者：skywalkerTT
 - 许可：MIT（见 LICENSE）
-- 仓库：<https://github.com/skywalkerTT/agy-purge-T>
+- 仓库：<https://github.com/machine-gun-tt/agy-purge-T>
 
 ## 名称归属
 
@@ -30,4 +30,4 @@
 
 保留本文件与 README 的「署名」章节，并在你的衍生物里明确写出上游：
 
-> Based on agy-purge (https://github.com/skywalkerTT/agy-purge-T), whose methodology derives from dsh-purge (https://github.com/YuJunZhiXue/dsh-purge).
+> Based on agy-purge (https://github.com/machine-gun-tt/agy-purge-T), whose methodology derives from dsh-purge (https://github.com/YuJunZhiXue/dsh-purge).

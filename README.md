@@ -75,14 +75,14 @@ agy-purge revert                          # 全撤
 
 ```powershell
 # Windows
-git clone https://github.com/skywalkerTT/agy-purge-T.git
+git clone https://github.com/machine-gun-tt/agy-purge-T.git
 cd agy-purge-T
 .\install.ps1
 ```
 
 ```bash
 # macOS / Linux
-git clone https://github.com/skywalkerTT/agy-purge-T.git
+git clone https://github.com/machine-gun-tt/agy-purge-T.git
 cd agy-purge-T
 ./install.sh
 ```

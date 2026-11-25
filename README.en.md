@@ -46,7 +46,7 @@ Layer state lives in `<plugin_data>/agy-purge/config.json` and takes effect on t
 ## Install
 
 ```powershell
-git clone https://github.com/skywalkerTT/agy-purge-T.git
+git clone https://github.com/machine-gun-tt/agy-purge-T.git
 cd agy-purge-T
 .\install.ps1            # Windows
 ```
