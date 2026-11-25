@@ -9,23 +9,28 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Test
         run: node --test
 
       - name: Pack
         run: |
+          set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
           NAME="agy-purge-T-${VERSION}"
           mkdir -p dist

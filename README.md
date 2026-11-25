@@ -127,22 +127,22 @@ agy-purge serve --port 7878        # 本地面板（只监听 127.0.0.1）
 agy-purge test-hook PreToolUse     # 单独喂一个载荷看某个 hook 怎么回
 ```
 
-`status` 的输出长这样：
+`status` 的输出长这样（路径已脱敏，实际会显示你自己的目录）：
 
 ```
 agy-purge · Antigravity 破甲层
 
-宿主       C:\Users\<you>\AppData\Local\Programs\Antigravity
-定制根     C:\Users\<you>\.gemini\config
-安装目录   C:\Users\<you>\.gemini\config\plugins\agy-purge
-数据目录   C:\Users\<you>\.gemini\antigravity\plugin_data\agy-purge
-运行时     PATH · node v24 · C:\Program Files\nodejs\node.exe
+宿主       <Antigravity 安装目录>
+定制根     <gemini>/config
+安装目录   <gemini>/config/plugins/agy-purge
+数据目录   <plugin_data>/agy-purge
+运行时     PATH · node v24 · <node>
 覆盖稿     user:prompt-inject.md · 524 字符 · c67fcedcfa1a
 
 补丁项
-  ✓ applied  plugin:files       v1.0.0 → ...\plugins\agy-purge
-  ✓ applied  plugin:hooks       5 条命令，解释器 C:\Program Files\nodejs\node.exe
-  ✓ applied  plugin:registered  ...\config.json → plugins.agy-purge.enabled = true
+  ✓ applied  plugin:files       v1.0.0 → <gemini>/config/plugins/agy-purge
+  ✓ applied  plugin:hooks       5 条命令，解释器 <node>
+  ✓ applied  plugin:registered  <gemini>/config/config.json → plugins.agy-purge.enabled = true
   ✓ applied  prompt:seeded      524 字符 · c67fcedcfa1a
   ✓ applied  runtime:config     四层全开
   · skipped  host:grants        未启用（--grants 才写）

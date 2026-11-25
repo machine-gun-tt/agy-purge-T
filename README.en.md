@@ -169,4 +169,4 @@ Touches only the Antigravity customization directory and `plugin_data` on **your
 
 Methodology and product shape come from **[YuJunZhiXue/dsh-purge](https://github.com/YuJunZhiXue/dsh-purge)** (MIT). `agy-purge` is an independent rewrite for Antigravity — different host API, different implementation, no shared code — built on its idea of separating the host layer from the model layer. Keep the attribution in [NOTICE.md](NOTICE.md) if you fork it.
 
-MIT © skywalkerTT
+MIT © machine-gun-tt

@@ -18,7 +18,7 @@
 
 ## 本项目
 
-- 作者：skywalkerTT
+- 作者：machine-gun-tt
 - 许可：MIT（见 LICENSE）
 - 仓库：<https://github.com/machine-gun-tt/agy-purge-T>
 

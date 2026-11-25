@@ -74,6 +74,19 @@ test('drift 检测：改一个已安装文件就会被标出来', () => {
   assert.equal(statusAll(ctx).find((i) => i.id === 'plugin:files').state, 'applied');
 });
 
+test('drift 检测覆盖根文件（plugin.json / README）', () => {
+  const { root } = sandbox();
+  const { ctx } = install({ root });
+  const manifest = path.join(ctx.installDir, 'plugin.json');
+  fs.writeFileSync(manifest, `${fs.readFileSync(manifest, 'utf8')}\n`, 'utf8');
+  const files = statusAll(ctx).find((i) => i.id === 'plugin:files');
+  assert.equal(files.state, 'drift');
+  assert.match(files.detail, /1 个文件/);
+
+  install({ root });
+  assert.equal(statusAll(ctx).find((i) => i.id === 'plugin:files').state, 'applied');
+});
+
 test('--grants 写入授权，revert 只移除自己写的那几条', () => {
   const { root } = sandbox();
   writeAtomic(
