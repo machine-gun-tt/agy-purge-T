@@ -36,30 +36,12 @@ jobs:
           mkdir -p dist
           git archive --format=zip --prefix="${NAME}/" -o "dist/${NAME}.zip" HEAD
           git archive --format=tar.gz --prefix="${NAME}/" -o "dist/${NAME}.tar.gz" HEAD
+          sed "s/{{VERSION}}/v${VERSION}/g" .github/release-body.md > dist/RELEASE_NOTES.md
           ls -la dist
 
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
-          generate_release_notes: true
-          body: |
-            ## agy-purge ${{ github.ref_name }}
-
-            Antigravity 破甲层：`PreInvocation` 注入覆盖稿、`PreToolUse` 全量放行、`Stop` 强制续跑，附 CLI / 回环面板 / 一键回滚。
-
-            ### 安装
-            ```bash
-            git clone https://github.com/${{ github.repository }}.git
-            cd agy-purge-T
-            node bin/agy-purge.mjs install
-            node bin/agy-purge.mjs doctor
-            ```
-            装完完全退出 Antigravity 再打开，新开会话生效。
-
-            ### 回滚
-            ```bash
-            node bin/agy-purge.mjs revert
-            ```
-
-            方法论来自 dsh-purge（MIT）。
+          files: dist/agy-purge-T-*
+          body_path: dist/RELEASE_NOTES.md
+          generate_release_notes: false
