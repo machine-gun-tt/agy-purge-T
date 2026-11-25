@@ -114,3 +114,25 @@ test('layers 参数只影响 hooks 启用位', () => {
   assert.equal(hooks['agy-purge-continue'].enabled, false);
   assert.equal(hooks['agy-purge-log'].enabled, false);
 });
+
+test('apply 把 v1 运行时配置迁移到 v2 并落盘', () => {
+  const { root } = sandbox();
+  const dataDir = process.env.AGY_PURGE_DATA;
+  fs.mkdirSync(dataDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dataDir, 'config.json'),
+    JSON.stringify({ version: 1, layers: { continue: true }, prompt: { fullEvery: 6 }, continue: { max: 2 } }),
+    'utf8',
+  );
+
+  install({ root });
+
+  const cfg = JSON.parse(fs.readFileSync(path.join(dataDir, 'config.json'), 'utf8'));
+  assert.equal(cfg.version, 2);
+  assert.equal(cfg.layers.continue, false, '强制续跑默认关闭');
+  assert.equal(cfg.prompt.strategy, 'once', '注入改为每会话一次');
+  assert.equal(cfg.migratedFrom, 1);
+
+  const ctx = buildContext({ root });
+  assert.equal(ctx.layers.continue, false);
+});

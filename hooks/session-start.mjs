@@ -1,29 +1,39 @@
 #!/usr/bin/env node
 /**
- * SessionStart：新会话第一句话之前就把覆盖稿压进轨迹。
- * 这样即使某次 PreInvocation 被宿主跳过或超时，会话依然处于破甲状态。
+ * SessionStart：新会话的第一次注入。
+ *
+ * 注入后会写会话记账，PreInvocation 看到记账就直接跳过——这消除了 v1.0 里
+ * 「SessionStart 注入一次 + 首次 PreInvocation 再注入一次」的重复。
  */
-import { logEvent, readConfig, resolvePrompt, runHook, writeState, readState } from './lib/io.mjs';
+import {
+  conversationKey,
+  logEvent,
+  markConversation,
+  readConfig,
+  readState,
+  resolvePrompt,
+  runHook,
+  writeState,
+} from './lib/io.mjs';
 
 runHook('SessionStart', (payload) => {
   const cfg = readConfig();
   if (!cfg.layers?.inject || cfg.prompt?.sessionStart === false) return {};
 
   const prompt = resolvePrompt(payload.modelName, cfg);
-  logEvent('SessionStart', payload);
   if (!prompt.text) return {};
 
-  const state = readState();
-  writeState({
-    ...state,
-    lastSessionStart: {
-      at: new Date().toISOString(),
-      conversationId: payload.conversationId || '',
-      source: prompt.source,
-      variant: prompt.variant,
-      modelName: payload.modelName || '',
-    },
+  const key = conversationKey(payload);
+  const steps = Number(payload.initialNumSteps) || 0;
+  const state = markConversation(readState(), key, {
+    steps,
+    mode: 'session-start',
+    source: prompt.source,
+    variant: prompt.variant,
+    modelName: payload.modelName || '',
   });
+  writeState(state);
+  logEvent('SessionStart', payload);
 
   return {
     injectSteps: [

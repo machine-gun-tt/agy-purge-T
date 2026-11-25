@@ -1,5 +1,28 @@
 # FAQ
 
+## 装了之后 token 消耗变高、思考链变长？
+
+这是 v1.0 的已知问题，v1.1 已经修掉。三个原因：
+
+1. **每轮都注入**：`PreInvocation` 每次模型调用前都塞一段 systemMessage。多出一条"新指令"，模型就会重新对齐一次指令位阶，思考链跟着变长。
+2. **重复注入**：`SessionStart` 注入一遍，首次 `PreInvocation` 又注入一遍，两份措辞不同的同一份稿子要模型自己合并。
+3. **默认强制续跑**：`continue.max: 2` 让每个回合最多凭空多出两次完整模型调用。
+
+v1.1 的默认：`strategy: "once"`（每会话一次）+ 压缩时补注 + 续跑关闭。
+
+```bash
+agy-purge status     # 看「注入策略」「续跑」两行
+agy-purge doctor     # 会验证同会话第二次调用确实没有注入
+```
+
+已经装过 v1.0 的，跑一次 `agy-purge apply` 即可自动迁移（`version: 1 → 2`），顺便写盘。
+
+想要更硬、愿意付 token，就显式选：
+
+```json
+{ "prompt": { "strategy": "interval", "fullEvery": 3 } }
+```
+
 ## 装了之后完全没变化？
 
 按顺序查：
@@ -19,6 +42,13 @@
 ## 我要不要开 `--grants`？
 
 `--grants` 会往 `config.json` 的 `userSettings.globalPermissionGrants.allow` 里写 `command(*)` 与 `execute_url(*)`，相当于全局「Always Allow」。**默认不开**，因为 `PreToolUse` 的 `allow` 已经覆盖了当次调用；`--grants` 是为了让某些"先查缓存再问"的路径也不再问。想开就显式开。
+
+## 续跑层默认关，那「模型提前收工」怎么办？
+
+两种解法，按成本从低到高：
+
+1. 在覆盖稿里把「一次给完整产物、不要以总结或提问结尾」写得更硬（默认稿里已有这一条）。
+2. 显式开启续跑：`agy-purge apply --layers=inject,gate,continue`，并把 `continue.max` 控制在 1–2。每次续跑等于一次完整模型调用，这是它的真实成本。
 
 ## 我想保留一部分审批怎么办？
 
@@ -52,7 +82,7 @@ agy-purge prompt --set my.md
 
 ## 一次注入会不会把上下文塞爆？
 
-完整稿 1–2 KB，只在会话开始和每 `fullEvery`（默认 6）轮注入一次；其余轮次是几百字的常驻提醒。想更省就把 `prompt.fullEvery` 调大，想更硬就调到 2–3。
+不会。v1.1 默认每个会话只注入一次完整稿（1–2 KB），之后不再重复；只有当上下文被压缩、`initialNumSteps` 明显回落时才补注一次。想更硬就切 `strategy: "interval"`，代价是每 N 次调用多一条 systemMessage。
 
 ## 换模型后行为变了？
 

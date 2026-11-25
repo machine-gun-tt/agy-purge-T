@@ -1,49 +1,84 @@
 #!/usr/bin/env node
 /**
- * PreInvocation：每一次模型调用前，把覆盖提示词作为 systemMessage 注入。
+ * PreInvocation：控制覆盖稿的注入时机。
  *
- * 注入策略（避免把上下文塞爆）：
- *   - invocationNum 为 0 / 缺失 → 注入完整覆盖稿
- *   - 之后每 prompt.fullEvery 次 → 再注入一次完整稿
- *   - 其余轮次 → 只注入一段常驻位阶提醒（几百字）
- * 完整稿本身会被 Antigravity 记录进轨迹，所以首次之后的重复是可选的补强。
+ * v1.1 起默认 `prompt.strategy = "once"`：每个会话只注入一次。
+ * 之前每轮都塞一段"常驻提醒"，每次注入都会让模型重新对齐一次指令位阶——
+ * 表现为思考链变长、思考时间变长、token 变贵。现在只在三种情况下注入：
+ *
+ *   first            本会话还没注入过（SessionStart 没跑或新会话）
+ *   compact-refresh  上下文被压缩过（initialNumSteps 明显回落），覆盖稿可能被挤掉
+ *   every / interval 用户显式选的高频策略
  */
-import { logEvent, readConfig, reinforceText, resolvePrompt, runHook, writeState, readState } from './lib/io.mjs';
+import {
+  advanceAnchor,
+  conversationKey,
+  getConversation,
+  logEvent,
+  markConversation,
+  readConfig,
+  readState,
+  resolvePrompt,
+  runHook,
+  writeState,
+} from './lib/io.mjs';
 
 runHook('PreInvocation', (payload) => {
   const cfg = readConfig();
   if (!cfg.layers?.inject) return {};
 
   const prompt = resolvePrompt(payload.modelName, cfg);
-  logEvent('PreInvocation', payload);
   if (!prompt.text) return {};
 
+  const strategy = String(cfg.prompt?.strategy || 'once');
+  const key = conversationKey(payload);
+  const steps = Number(payload.initialNumSteps) || 0;
   const invocation = Number.isFinite(Number(payload.invocationNum)) ? Number(payload.invocationNum) : 0;
   const fullEvery = Math.max(1, Number(cfg.prompt?.fullEvery) || 6);
-  const isFirst = invocation === 0;
-  const isRefresh = !isFirst && invocation % fullEvery === 0;
-  const text = isFirst || isRefresh ? prompt.text : reinforceText(cfg);
-  if (!text.trim()) return {};
 
-  const state = readState();
-  writeState({
-    ...state,
-    lastInjection: {
-      at: new Date().toISOString(),
-      conversationId: payload.conversationId || '',
-      invocation,
-      mode: isFirst || isRefresh ? 'full' : 'reinforce',
-      source: prompt.source,
-      variant: prompt.variant,
-      modelName: payload.modelName || '',
-    },
+  let state = readState();
+  const conv = getConversation(state, key);
+
+  let mode = null;
+  if (strategy === 'every') {
+    mode = 'every';
+  } else if (strategy === 'interval') {
+    if (!conv || invocation === 0 || invocation % fullEvery === 0) mode = 'interval';
+  } else if (!conv) {
+    mode = 'first';
+  } else if (
+    cfg.prompt?.refreshOnCompaction !== false &&
+    steps > 0 &&
+    Number(conv.steps) > 0 &&
+    steps < Number(conv.steps) - 2
+  ) {
+    mode = 'compact-refresh';
+  }
+
+  if (!mode) {
+    // 不注入，但把锚点往前推，保证之后的压缩判断仍然准
+    state = advanceAnchor(state, key, steps);
+    writeState(state);
+    logEvent('PreInvocation:skip', payload);
+    return {};
+  }
+
+  state = markConversation(state, key, {
+    steps,
+    mode,
+    invocation,
+    source: prompt.source,
+    variant: prompt.variant,
+    modelName: payload.modelName || '',
   });
+  writeState(state);
+  logEvent(`PreInvocation:${mode}`, payload);
 
   return {
     injectSteps: [
       {
         systemMessage: {
-          systemMessage: text,
+          systemMessage: prompt.text,
         },
       },
     ],

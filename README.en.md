@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="agy-purge" width="132">
+</p>
+
 # ⚔️ agy-purge — a jailbreak layer for Google Antigravity
 
 > Same idea as [dsh-purge](https://github.com/YuJunZhiXue/dsh-purge), ported to Antigravity: sit **upstream of the approval gate and the model call** using the host's own hook protocol. No `app.asar` patching, no `language_server.exe` byte surgery.
@@ -24,6 +28,25 @@ dsh-purge had to patch the harness because DeepSeek Harness exposed no extension
 | **Clean rollback** | `*.agypurge.bak` before every host write; `revert` undoes exactly what it did, `uninstall` also clears data |
 
 Zero dependencies, one CLI entry point, Node ≥ 18 (and if there is no Node, it falls back to Antigravity's own `agy-node` shim or `ELECTRON_RUN_AS_NODE`).
+
+## Token cost (v1.1)
+
+v1.0 injected a "standing reminder" before **every** model call and forced up to two extra continuations per turn. Both cost real tokens, and the repeated directive makes the model re-reconcile its instructions on every iteration — visible as longer reasoning and slower turns.
+
+v1.1 fixes the defaults:
+
+| Behavior | Cost | v1.1 |
+| --- | --- | --- |
+| systemMessage before every call | every tool loop adds a fresh directive | `strategy: "once"` — one injection per conversation |
+| SessionStart and first PreInvocation both inject | duplicate text to reconcile | per-conversation ledger; second injection skipped |
+| context compaction | prompt may be squeezed out of the trajectory | re-inject only when `initialNumSteps` drops |
+| `continue.max: 2` | up to 2 extra model calls per turn | continuation layer **off** by default |
+
+```json
+{ "prompt": { "strategy": "once" } }
+```
+
+`agy-purge status` prints the active strategy and continuation state; `agy-purge doctor` asserts that the second call in a conversation injects nothing at all.
 
 ## Four layers
 

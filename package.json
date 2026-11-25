@@ -1,6 +1,6 @@
 {
   "name": "agy-purge-t",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Antigravity 破甲：用宿主原生 hooks 完成提示词注入 / 审批放行 / 强制续跑。Jailbreak layer for Google Antigravity — prompt injection, approval bypass and forced continuation through native plugin hooks.",
   "type": "module",
   "license": "MIT",
@@ -20,6 +20,7 @@
     "rules",
     "skills",
     "prompts",
+    "assets",
     "docs",
     "plugin.json",
     "project.json",

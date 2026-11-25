@@ -1,8 +1,14 @@
+<p align="center">
+  <img src="assets/logo.png" alt="agy-purge" width="132">
+</p>
+
 # ⚔️ agy-purge —— Antigravity 破甲层
 
 > 同一套破甲思路，换到 Google Antigravity 上：**用宿主自己的 hooks 站在审批闸门和模型调用的上游**，不碰 `app.asar`，不改 `language_server.exe`。
 
 `agy-purge` 是 [dsh-purge](https://github.com/YuJunZhiXue/dsh-purge)（DeepSeek Harness 破甲）在 Antigravity 上的对应实现。dsh-purge 之所以要打补丁，是因为 DSH 没有对外暴露扩展点；Antigravity 有 `plugin.json` + `hooks.json`，所以这里用原生扩展点拿到**同样的效果**，而且升级不会碎。
+
+**v1.1 起默认把 token 成本压到最低**：每个会话只注入一次覆盖稿、强制续跑默认关闭。以前每轮都塞一段"常驻提醒"、并且默认最多强行续跑 2 次——这两件事都会让模型多做一轮"重新对齐指令"的思考，表现为思考链变长、思考时间变长、token 变贵。
 
 <p align="left">
   <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js&logoColor=fff">
@@ -16,6 +22,7 @@
 ## 目录
 
 - [它做了什么](#它做了什么)
+- [Token 成本：为什么 v1.1 更省](#token-成本为什么-v11-更省)
 - [四层破甲](#四层破甲)
 - [安装](#安装)
 - [使用](#使用)
@@ -34,13 +41,37 @@ Antigravity 的 agent 在把回答交给你之前会过好几道关：前言的�
 
 | 你会得到 | 实际发生什么 |
 | --- | --- |
-| **覆盖稿注入** | `SessionStart` + `PreInvocation` 把覆盖提示词作为 `systemMessage` 压进轨迹，每 `fullEvery` 轮补注一次 |
+| **覆盖稿注入** | `SessionStart` 或每会话首次 `PreInvocation` 把覆盖提示词作为 `systemMessage` 压进轨迹——**默认每会话一次**，上下文被压缩时才补注 |
 | **审批全放行** | `PreToolUse` 对任意工具返回 `decision: "allow"`，并补齐 `permissionOverrides`，让「Always Allow」缓存一起生效 |
-| **强制续跑** | `Stop` 在模型「没调工具就收工」时返回 `continue`，把循环拉回来（带上限，不会死循环） |
+| **强制续跑（默认关）** | `Stop` 可在模型「没调工具就收工」时返回 `continue`；默认不启用，因为它会让每个回合凭空多出模型调用 |
 | **审计** | `PostToolUse` 把事件写进 `plugin_data/agy-purge/log/events.jsonl`，随时能复核 |
 | **一键回滚** | 每一次写入前留 `*.agypurge.bak`；`revert` 精确撤销，`uninstall` 连数据一起清 |
 
 零依赖，单文件 CLI，Node ≥ 18（没有 Node 也能跑：会自动用 Antigravity 自带的 `agy-node` 垫片或 `ELECTRON_RUN_AS_NODE`）。
+
+---
+
+## Token 成本：为什么 v1.1 更省
+
+v1.0 每次模型调用前都注入一段"常驻位阶提醒"，并且默认开着强制续跑。实测下来这不是免费午餐：
+
+| 行为 | 代价 | v1.1 的处理 |
+| --- | --- | --- |
+| 每轮注入 systemMessage | 每个工具循环都多一个"新指令"事件，模型会重新对齐一次指令位阶——思考链变长、思考时间变长 | 默认 `strategy: "once"`：每个会话只注入一次 |
+| SessionStart + 首次 PreInvocation 各注入一次 | 同一份稿子重复两遍，模型在两条冲突措辞之间做取舍 | 注入后写会话记账，`PreInvocation` 直接跳过 |
+| 上下文被压缩 | 覆盖稿可能被挤出轨迹，行为悄悄回退 | 检测 `initialNumSteps` 回落，只在此时补注一次 |
+| 默认 `continue.max: 2` | 每个回合最多凭空多跑 2 次模型调用（每次都带完整上下文） | 续跑层默认**关**，要就 `--layers=...,continue` 显式开 |
+
+三种注入策略，默认第一种：
+
+```bash
+# <plugin_data>/agy-purge/config.json
+{ "prompt": { "strategy": "once" } }      # 每会话一次（默认，最省）
+{ "prompt": { "strategy": "interval", "fullEvery": 6 } }   # 每 6 次调用重注一次
+{ "prompt": { "strategy": "every" } }     # 每次调用都重注（最贵，只有硬钉位阶才需要）
+```
+
+`agy-purge status` 会把当前策略和续跑状态直接打出来，`agy-purge doctor` 还会验证"同会话第二次调用确实没有注入"。
 
 ---
 
@@ -49,10 +80,11 @@ Antigravity 的 agent 在把回答交给你之前会过好几道关：前言的�
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  inject    SessionStart / PreInvocation → 覆盖稿进 systemMessage │
+│            默认每会话一次；压缩后补注；策略可切 interval / every  │
 ├──────────────────────────────────────────────────────────────┤
 │  gate      PreToolUse → allow + permissionOverrides            │
 ├──────────────────────────────────────────────────────────────┤
-│  continue  Stop → continue（executionNum < continue.max）       │
+│  continue  Stop → continue（默认关；开时受 continue.max 约束）   │
 ├──────────────────────────────────────────────────────────────┤
 │  log       PostToolUse → events.jsonl（只审计，不做决策）        │
 └──────────────────────────────────────────────────────────────┘
@@ -61,11 +93,12 @@ Antigravity 的 agent 在把回答交给你之前会过好几道关：前言的�
 四层可以单独开关：
 
 ```bash
-agy-purge apply --layers=inject,gate      # 只开注入 + 放行
-agy-purge revert                          # 全撤
+agy-purge apply --layers=inject,gate                  # 只开注入 + 放行（最省 token）
+agy-purge apply --layers=inject,gate,continue         # 需要"被抓回来继续干"时再加续跑
+agy-purge revert                                      # 全撤
 ```
 
-层开关落在 `<plugin_data>/agy-purge/config.json`，改完**下一次调用即生效**，不用重启 Antigravity。
+层开关落在 `<plugin_data>/agy-purge/config.json`，改完**下一次调用即生效**，不用重启 Antigravity。v1.0 的配置会在 `apply` 时自动迁移（`version: 1 → 2`，注入改 once、续跑改关），不需要手工改 JSON。
 
 ---
 
@@ -138,6 +171,8 @@ agy-purge · Antigravity 破甲层
 数据目录   <plugin_data>/agy-purge
 运行时     PATH · node v24 · <node>
 覆盖稿     user:prompt-inject.md · 524 字符 · c67fcedcfa1a
+注入策略   每会话一次（省 token） · 已记账会话 0
+续跑       关（不额外增加模型调用）
 
 补丁项
   ✓ applied  plugin:files       v1.0.0 → <gemini>/config/plugins/agy-purge
@@ -213,7 +248,7 @@ flowchart TD
 | `prompt-inject.md` 注入 | `PreInvocation` → `systemMessage` | 同一份稿子语义，入口从「改包内系统提示」换成「调用前注入」 |
 | 审批/沙箱补丁 | `PreToolUse` → `allow` | 站在闸门本身，比改闸门代码更稳 |
 | `hooksDenyBypass` | `gate.denyPatterns`（默认空） | 想留护栏就自己写模式 |
-| `autoContinue` | `Stop` → `continue` | 带 `continue.max` 上限，防死循环 |
+| `autoContinue` | `Stop` → `continue` | **默认关**；开启时受 `continue.max` 上限约束 |
 | Clean 页的补丁项 | `status` / 面板的补丁项 | 状态机一致：applied / pending / drift / conflict / skipped |
 | `*.dshpurge.bak` | `*.agypurge.bak` | 一次备份不覆盖，revert 精确撤销 |
 | 按模型换稿 | `prompt-<variant>.md` | gemini / claude / gpt 三套内置稿 |
@@ -261,8 +296,8 @@ agy-purge doctor
 | `plugin:files` = `drift` | 升级覆盖了文件 | `agy-purge apply` |
 | `config.json` = `conflict` | JSON 坏了 | 先修 JSON，插件拒绝在坏文件上写 |
 | 还弹审批 | `gate` 层关了，或 hook 超时 | `agy-purge apply --layers=gate`，看 `doctor` 的耗时 |
-| 前两轮正常后来软化 | 上下文稀释 | `prompt.fullEvery` 调小（如 3） |
-| 回答到一半停住 | `continue` 层没接住 | 确认层开启，`continue.max ≥ 2` |
+| 前两轮正常后来软化 | 上下文稀释 / 覆盖稿被挤掉 | `prompt.strategy: "interval"` + `fullEvery: 3`，或换更硬的稿 |
+| 回答到一半停住 | `continue` 层默认关 | `agy-purge apply --layers=inject,gate,continue` |
 
 更多见 [docs/faq.md](docs/faq.md) 和内置技能 `agy-purge-drill`。
 

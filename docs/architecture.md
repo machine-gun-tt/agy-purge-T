@@ -59,6 +59,21 @@ agy-purge-T/
 
 `apply` 之后一定会重算 `status`；`drift` 能自动收敛，`conflict` 永远不会被强写。
 
+## 注入策略与会话记账（v1.1）
+
+`PreInvocation` 不再无条件注入。判定顺序：
+
+```
+strategy = every      → 每次都注入（显式选择）
+strategy = interval   → invocationNum === 0 或 % fullEvery === 0 时注入
+strategy = once(默认) → 本会话没有记账 → 注入（首次）
+                        否则 initialNumSteps 明显回落（压缩）→ 补注一次
+                        其余情况 → 直接返回 {}，并把步数锚点往前推
+```
+
+记账写在 `state.json` 的 `conversations[conversationId]`，字段是 `steps / mode / at / source / variant`，最多保留 64 个会话（按时间淘汰）。
+
+为什么这么设计：多注入一条 systemMessage，模型就多一次「重新对齐指令」的推理；强制续跑则直接多出完整的一次模型调用。两者都体现在思考链长度和账单上，所以默认值必须是最省的组合，想要更硬的人再显式加码。
 ## 数据布局
 
 ```
@@ -66,7 +81,7 @@ agy-purge-T/
 <plugin_data>/agy-purge/
 ├── config.json      四层开关、fullEvery、continue.max、askPatterns、denyPatterns
 ├── prompt-inject.md 你的覆盖稿（用户文件，revert 不删）
-├── state.json       安装记录、运行时、已写授权清单
+├── state.json       安装记录、运行时、已写授权清单、会话注入记账
 ├── log/events.jsonl 审计（超过 maxBytes 自动轮转成 .1）
 └── log/hook-errors.log
 ```

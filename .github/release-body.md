@@ -3,7 +3,7 @@
 Antigravity 破甲层：用宿主原生 hooks 完成提示词注入、审批放行、强制续跑，附 CLI、回环面板与一键回滚。
 **不修改** `app.asar`、`language_server.exe` 或任何宿主二进制。
 
-> A jailbreak layer for Google Antigravity built entirely on the host's native hook protocol — prompt injection, approval bypass and forced continuation, plus a CLI, a loopback dashboard and one-command rollback. **No host binary is patched.**
+> A jailbreak layer for Google Antigravity built entirely on the host's native hook protocol — prompt injection, approval bypass and optional forced continuation, plus a CLI, a loopback dashboard and one-command rollback. **No host binary is patched.** Defaults since v1.1: one injection per conversation, continuation off (lowest token cost).
 
 ---
 
