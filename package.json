@@ -1,0 +1,64 @@
+{
+  "name": "agy-purge-t",
+  "version": "1.0.0",
+  "description": "Antigravity 破甲：用宿主原生 hooks 完成提示词注入 / 审批放行 / 强制续跑。Jailbreak layer for Google Antigravity — prompt injection, approval bypass and forced continuation through native plugin hooks.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "agy-purge": "bin/agy-purge.mjs"
+  },
+  "exports": {
+    ".": "./lib/install.mjs",
+    "./paths": "./lib/paths.mjs",
+    "./patches": "./lib/patches.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "hooks",
+    "rules",
+    "skills",
+    "prompts",
+    "docs",
+    "plugin.json",
+    "project.json",
+    "hooks.json",
+    "install.ps1",
+    "install.sh",
+    "README.md",
+    "README.en.md",
+    "NOTICE.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test \"test/**/*.test.mjs\"",
+    "status": "node bin/agy-purge.mjs status",
+    "install:plugin": "node bin/agy-purge.mjs install",
+    "doctor": "node bin/agy-purge.mjs doctor",
+    "serve": "node bin/agy-purge.mjs serve"
+  },
+  "keywords": [
+    "antigravity",
+    "agy",
+    "jailbreak",
+    "破甲",
+    "hooks",
+    "prompt-injection",
+    "approval-bypass",
+    "red-team",
+    "llm-security",
+    "agent"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skywalkerTT/agy-purge-T.git"
+  },
+  "homepage": "https://github.com/skywalkerTT/agy-purge-T#readme",
+  "bugs": {
+    "url": "https://github.com/skywalkerTT/agy-purge-T/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

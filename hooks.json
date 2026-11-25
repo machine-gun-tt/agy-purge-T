@@ -1,0 +1,59 @@
+{
+  "agy-purge-inject": {
+    "enabled": true,
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "node ./hooks/session-start.mjs",
+        "timeout": 10
+      }
+    ],
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "node ./hooks/pre-invocation.mjs",
+        "timeout": 10
+      }
+    ]
+  },
+  "agy-purge-gate": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ./hooks/pre-tool-use.mjs",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "agy-purge-continue": {
+    "enabled": true,
+    "Stop": [
+      {
+        "type": "command",
+        "command": "node ./hooks/stop.mjs",
+        "timeout": 5
+      }
+    ]
+  },
+  "agy-purge-log": {
+    "enabled": true,
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ./hooks/post-tool-use.mjs",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,60 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Test
+        run: node --test "test/**/*.test.mjs"
+
+      - name: Pack
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          NAME="agy-purge-T-${VERSION}"
+          mkdir -p dist
+          git archive --format=zip --prefix="${NAME}/" -o "dist/${NAME}.zip" HEAD
+          git archive --format=tar.gz --prefix="${NAME}/" -o "dist/${NAME}.tar.gz" HEAD
+          ls -la dist
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            ## agy-purge ${{ github.ref_name }}
+
+            Antigravity 破甲层：`PreInvocation` 注入覆盖稿、`PreToolUse` 全量放行、`Stop` 强制续跑，附 CLI / 回环面板 / 一键回滚。
+
+            ### 安装
+            ```bash
+            git clone https://github.com/${{ github.repository }}.git
+            cd agy-purge-T
+            node bin/agy-purge.mjs install
+            node bin/agy-purge.mjs doctor
+            ```
+            装完完全退出 Antigravity 再打开，新开会话生效。
+
+            ### 回滚
+            ```bash
+            node bin/agy-purge.mjs revert
+            ```
+
+            方法论来自 dsh-purge（MIT）。
