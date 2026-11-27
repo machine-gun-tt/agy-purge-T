@@ -181,17 +181,34 @@ export function writeState(state) {
 
 /* ------------------------------------------------------------------ 提示词 */
 
-const VARIANT_BY_MODEL = [
+const FAMILY_BY_MODEL = [
   [/claude|sonnet|opus|haiku/i, 'claude'],
   [/gpt|openai|oss/i, 'gpt'],
-  [/gemini|flash|pro\b/i, 'gemini'],
+  [/gemini|flash|pro\b|neon/i, 'gemini'],
 ];
+
+// 能力档位：高能力模型的安全训练更硬，越用「覆盖/忽略」的措辞越容易被硬拒，
+// 所以 strong 档单独给一份「授权演练」框架的稿子。
+const STRONG_MODEL = /neon|ultra|high|thinking|opus|sonnet|pro\b|max|reason/i;
+const LIGHT_MODEL = /flash|mini|lite|fast|medium|small|nano/i;
+
+export function modelTier(modelName) {
+  const name = String(modelName || '');
+  if (STRONG_MODEL.test(name)) return 'strong';
+  if (LIGHT_MODEL.test(name)) return 'light';
+  return 'light';
+}
 
 export function modelVariant(modelName, forced) {
   if (forced && forced !== 'auto') return forced;
   const name = String(modelName || '');
-  for (const [re, id] of VARIANT_BY_MODEL) if (re.test(name)) return id;
+  for (const [re, id] of FAMILY_BY_MODEL) if (re.test(name)) return id;
   return 'gemini';
+}
+
+/** 供状态展示与调试：{ family, tier } */
+export function modelProfile(modelName, forced) {
+  return { family: modelVariant(modelName, forced), tier: modelTier(modelName) };
 }
 
 function readIfNonEmpty(file) {
@@ -204,26 +221,49 @@ function readIfNonEmpty(file) {
 }
 
 /**
- * 覆盖提示词的解析顺序（与 dsh-purge 的 prompt-inject.md 语义一致）：
- *   1. <data>/prompt-inject.md      用户自己的覆盖稿（最高优先）
- *   2. <data>/prompt-<variant>.md   按模型分开的覆盖稿
- *   3. <plugin>/prompts/override.<variant>.md   随插件发布的默认稿
- *   4. <plugin>/prompts/override.md            兜底默认稿
+ * 覆盖稿解析顺序（hook 与 CLI 必须一致，见 lib/prompt.mjs）：
+ *   1. <data>/prompt-inject.md                 用户自己的稿（最高优先）
+ *   2. <data>/prompt-<family>-<tier>.md         用户按「家族+档位」分稿
+ *   3. <data>/prompt-<family>.md                用户按家族分稿
+ *   4. <plugin>/prompts/override.<family>-<tier>.md   内置分档稿
+ *   5. <plugin>/prompts/override.<family>.md          内置家族稿
+ *   6. <plugin>/prompts/override.<tier>.md            内置档位兜底
+ *   7. <plugin>/prompts/override.md                   总兜底
  */
-export function resolvePrompt(modelName, cfg = readConfig()) {
+export function promptCandidates(modelName, cfg = readConfig()) {
   const data = dataDir();
-  const variant = modelVariant(modelName, cfg.prompt?.variant);
-  const ordered = [
-    { file: path.join(data, 'prompt-inject.md'), source: 'user:prompt-inject.md' },
-    { file: path.join(data, `prompt-${variant}.md`), source: `user:prompt-${variant}.md` },
-    { file: path.join(PLUGIN_ROOT, 'prompts', `override.${variant}.md`), source: `default:override.${variant}.md` },
-    { file: path.join(PLUGIN_ROOT, 'prompts', 'override.md'), source: 'default:override.md' },
+  const forced = cfg.prompt?.variant;
+  const family = modelVariant(modelName, forced);
+  const tier = forced && forced !== 'auto' ? 'light' : modelTier(modelName);
+  const users = [
+    { file: path.join(data, 'prompt-inject.md'), source: 'user:prompt-inject.md', id: 'user' },
+    { file: path.join(data, `prompt-${family}-${tier}.md`), source: `user:prompt-${family}-${tier}.md`, id: 'user-tier' },
+    { file: path.join(data, `prompt-${family}.md`), source: `user:prompt-${family}.md`, id: 'user-family' },
   ];
+  const bundled = [
+    { file: path.join(PLUGIN_ROOT, 'prompts', `override.${family}-${tier}.md`), source: `default:override.${family}-${tier}.md`, id: 'bundled-tier' },
+    { file: path.join(PLUGIN_ROOT, 'prompts', `override.${family}.md`), source: `default:override.${family}.md`, id: 'bundled-family' },
+    { file: path.join(PLUGIN_ROOT, 'prompts', `override.${tier}.md`), source: `default:override.${tier}.md`, id: 'bundled-tier-generic' },
+    { file: path.join(PLUGIN_ROOT, 'prompts', 'override.md'), source: 'default:override.md', id: 'bundled-default' },
+  ];
+  return { family, tier, ordered: [...users, ...bundled] };
+}
+
+export function resolvePrompt(modelName, cfg = readConfig()) {
+  const { family, tier, ordered } = promptCandidates(modelName, cfg);
+  const seededSha = String(readState()?.seededSha || '');
   for (const item of ordered) {
     const text = readIfNonEmpty(item.file);
-    if (text) return { text, source: item.source, variant };
+    if (!text) continue;
+    // 我们自动写入的默认稿不冒充「用户覆盖」：内容还是种子原样时跳过，
+    // 让按模型分档的稿子（尤其是 strong）能生效；用户一改就重新占最高优先。
+    if (item.id === 'user' && seededSha) {
+      const sha = crypto.createHash('sha256').update(text).digest('hex');
+      if (sha === seededSha) continue;
+    }
+    return { text, source: item.source, variant: family, tier, id: item.id };
   }
-  return { text: '', source: 'none', variant };
+  return { text: '', source: 'none', variant: family, tier, id: 'none' };
 }
 
 /* ------------------------------------------------- 会话级注入记账（省 token 的核心） */

@@ -184,10 +184,12 @@ function cmdPrompt(args) {
     return res.status === 0 ? 0 : 1;
   }
 
-  const resolved = resolvePromptFile(ctx.dataDir, ctx.repoRoot, { variant: variant || 'auto' });
+  const modelName = typeof args.model === 'string' ? args.model : '';
+  const resolved = resolvePromptFile(ctx.dataDir, ctx.repoRoot, { variant: variant || 'auto', modelName });
   const stats = promptStats(resolved.text);
   if (args.show || !args.json) {
-    process.stdout.write(`# 生效中的覆盖稿：${resolved.source}（${stats.chars} 字符 · ${stats.lines} 行）\n`);
+    process.stdout.write(`# 生效中的覆盖稿：${resolved.source}（${stats.chars} 字符 · ${stats.lines} 行 · ${resolved.family}/${resolved.tier}）\n`);
+    if (modelName) process.stdout.write(`# 模型：${modelName} → 档位 ${resolved.tier}\n`);
     process.stdout.write(`# 文件：${resolved.file || '(无)'}\n\n`);
     process.stdout.write(`${resolved.text}\n`);
   } else {

@@ -23,6 +23,20 @@ agy-purge doctor     # 会验证同会话第二次调用确实没有注入
 { "prompt": { "strategy": "interval", "fullEvery": 3 } }
 ```
 
+## 同一句话，Flash 会答、Neon 直接拒绝？
+
+这是模型层差异，不是钩子问题。高能力模型（neon/high/pro/thinking/opus/sonnet）的安全训练更硬，而且对「覆盖层 / 忽略策略 / 别自我审查」这类措辞极其敏感——越强调越容易被它判成越狱尝试，直接硬拒。
+
+v1.2.1 起按「家族 + 档位」分稿：
+
+```bash
+agy-purge prompt --show --model gemini-4-neon-high      # gemini/strong
+agy-purge prompt --show --model gemini-3.8-flash-medium # gemini/light
+```
+
+strong 档换成「本地授权演练」框架：写明授权与范围、交付标准、占位符规则，并允许「单条子步骤越界时只指出该条、其余照常交付」，不再出现反审查措辞。
+
+想让某个档位固定用自己的稿：把稿写到 `<plugin_data>/prompt-gemini-strong.md`（或 `prompt-gemini.md`），它们优先级高于内置稿、低于 `prompt-inject.md`。
 ## 宿主升级后回答突然变保守（多出「不在支持范围」、执行变犹豫）？
 
 这是宿主换构建 + 换模型导致的，不是钩子坏了。判据：

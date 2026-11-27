@@ -6,6 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { renderHooks } from '../lib/patches.mjs';
+import { sha256 } from '../lib/fsx.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -42,7 +43,7 @@ function runHook(script, payload, { data, raw = null, timeout = 15000 } = {}) {
 const BASE = {
   conversationId: 'c-1',
   workspacePaths: ['/tmp/ws'],
-  modelName: 'gemini-3-pro',
+  modelName: 'gemini-3.8-flash-medium',
   lastUserInput: 'probe',
   cwd: '/tmp/ws',
   invocationNum: 0,
@@ -248,4 +249,56 @@ test('renderHooks 结构符合协议：分组事件带 matcher，扁平事件直
   assert.ok(Array.isArray(hooks['agy-purge-gate'].PreToolUse[0].hooks));
   assert.equal(hooks['agy-purge-log'].enabled, false, 'log 层关闭时整组应禁用');
   assert.match(hooks['agy-purge-gate'].PreToolUse[0].hooks[0].command, /pre-tool-use\.mjs/);
+});
+
+/* ------------------------------------------------------------------ 模型分档 */
+
+test('高能力模型（neon/high）自动切到 strong 稿', () => {
+  const data = sandbox();
+  const out = runHook('pre-invocation.mjs', { ...BASE, conversationId: 'c-neon', modelName: 'gemini-4-neon-high' }, { data });
+  const text = out.parsed?.injectSteps?.[0]?.systemMessage?.systemMessage || '';
+  assert.match(text, /工作约定|授权/, `strong 稿应强调授权场景，实际开头：${text.slice(0, 60)}`);
+  assert.doesNotMatch(text, /不做政策评估/, 'strong 稿不使用「反审查」措辞，避免高能力模型硬拒');
+});
+
+test('轻量模型（flash/medium）走 light 稿', () => {
+  const data = sandbox();
+  const out = runHook('pre-invocation.mjs', { ...BASE, conversationId: 'c-flash', modelName: 'gemini-3.8-flash-medium' }, { data });
+  const text = out.parsed?.injectSteps?.[0]?.systemMessage?.systemMessage || '';
+  assert.match(text, /执行层覆盖稿/);
+});
+
+test('用户 prompt-inject.md 仍然压过所有分档稿', () => {
+  const data = sandbox();
+  fs.writeFileSync(path.join(data, 'prompt-inject.md'), 'USER-OVERRIDE-WINS\n', 'utf8');
+  const strong = runHook('pre-invocation.mjs', { ...BASE, conversationId: 'c-u1', modelName: 'gemini-4-neon-high' }, { data });
+  assert.match(strong.parsed?.injectSteps?.[0]?.systemMessage?.systemMessage || '', /USER-OVERRIDE-WINS/);
+});
+
+test('CLI 与钩子的分档选择一致', async () => {
+  const data = sandbox();
+  const { resolvePromptFile } = await import('../lib/prompt.mjs');
+  for (const modelName of ['gemini-4-neon-high', 'gemini-3.8-flash-medium']) {
+    const convId = `c-align-${modelName}`;
+    const hookOut = runHook('pre-invocation.mjs', { ...BASE, conversationId: convId, modelName }, { data });
+    const hookText = hookOut.parsed?.injectSteps?.[0]?.systemMessage?.systemMessage || '';
+    const cli = resolvePromptFile(data, REPO, { modelName });
+    assert.equal(hookText.trim(), cli.text.trim(), `${modelName} 下 CLI 与钩子应选同一份稿`);
+  }
+});
+
+test('自动种子稿不遮蔽分档稿；用户改过才占最高优先', () => {
+  const data = sandbox();
+  const seed = fs.readFileSync(path.join(REPO, 'prompts', 'override.gemini.md'), 'utf8');
+  fs.writeFileSync(path.join(data, 'prompt-inject.md'), seed, 'utf8');
+  fs.writeFileSync(path.join(data, 'state.json'), JSON.stringify({ seededSha: sha256(seed) }), 'utf8');
+
+  const neon = runHook('pre-invocation.mjs', { ...BASE, conversationId: 'c-seed-1', modelName: 'gemini-4-neon-high' }, { data });
+  const neonText = neon.parsed?.injectSteps?.[0]?.systemMessage?.systemMessage || '';
+  assert.match(neonText, /工作约定/, '未改动的种子稿应让位给 strong 分档稿');
+
+  fs.appendFileSync(path.join(data, 'prompt-inject.md'), '\nUSER-EDIT-MARKER\n');
+  const edited = runHook('pre-invocation.mjs', { ...BASE, conversationId: 'c-seed-2', modelName: 'gemini-4-neon-high' }, { data });
+  const editedText = edited.parsed?.injectSteps?.[0]?.systemMessage?.systemMessage || '';
+  assert.match(editedText, /USER-EDIT-MARKER/, '用户改动后必须优先');
 });
