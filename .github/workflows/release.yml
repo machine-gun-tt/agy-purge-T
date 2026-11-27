@@ -36,7 +36,7 @@ jobs:
           mkdir -p dist
           git archive --format=zip --prefix="${NAME}/" -o "dist/${NAME}.zip" HEAD
           git archive --format=tar.gz --prefix="${NAME}/" -o "dist/${NAME}.tar.gz" HEAD
-          sed "s/{{VERSION}}/v${VERSION}/g" .github/release-body.md > dist/RELEASE_NOTES.md
+          node scripts/release-notes.mjs "$VERSION" --out dist/RELEASE_NOTES.md
           ls -la dist
 
       - name: Publish

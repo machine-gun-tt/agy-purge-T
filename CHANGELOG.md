@@ -1,5 +1,14 @@
 # 更新日志
 
+| 版本 | 日期 | 一句话 |
+| --- | --- | --- |
+| [v1.2.1](#v1212026-11-27) | 2026-11-27 | 按模型档位换稿，修 Neon 硬拒；分档解析、种子稿遮蔽、CLI/钩子不一致、升级残留文件等修复；文档与发布流程收口 |
+| [v1.2.0](#v1202026-11-27) | 2026-11-27 | 每轮一次注入、覆盖稿 v3、宿主构建指纹 |
+| [v1.1.0](#v1102026-11-25) | 2026-11-25 | 去掉每调用注入与默认续跑，省 token；修漂移漏根文件 |
+| [v1.0.0](#v1002026-11-25) | 2026-11-25 | 四层破甲首版 |
+
+> GitHub Release 说明由 `scripts/release-notes.mjs` 从本文件抽取，内容就是该版本「改了什么 / 修了哪些 bug」。
+
 ## v1.2.1（2026-11-27）
 
 **主题：同一句话，Flash 同意、Neon 硬拒——按模型能力分档换稿。**
@@ -22,10 +31,19 @@
 - `doctor` 在 `strategy: every/interval` 下不再误判「轮内去重」失败（改为 skip 并说明）。
 - 新增 `hooks 配置可解析` 检查：`plugin_data/config.json` 损坏时直接报错。
 - 宿主指纹加缓存，`status` / 面板不再每次读 6.7MB 的 `app.asar`。
+- 注入层描述改为「每轮一次」，与实现一致。
+- **升级不清理旧文件**：删掉 `README.en.md` 之后，已安装的插件目录里仍留着它。现在 `apply` 按安装清单（`.agy-install.json`）删除仓库里已不存在的文件，并清理历史遗留。
+- **安装清单只记录受管文件**：用户自己放进插件目录的文件不会被写进清单，也不会被后续 `apply` 删掉。
+
+### 文档与发布
+
+- **Release 说明按版本抽取**：新增 `scripts/release-notes.mjs`，从本文件抽出该版本的「改了什么 / 修了哪些 bug」；workflow 与线上 Release 走同一份内容，不再手写、不会漂移。
+- **README 重写并只保留中文**：删除 `README.en.md`，主页只放中文说明；补齐每轮注入、模型分档、宿主指纹、`doctor` 新检查与状态样例。
+- 本文件顶部新增版本总览表。
 
 ### 测试
 
-53 项，新增：neon → strong / flash → light 分流、用户稿压过分档、CLI 与钩子选择一致、种子稿遮蔽修复。
+54 项，新增：neon → strong / flash → light 分流、用户稿压过分档、CLI 与钩子选择一致、种子稿遮蔽修复、`apply` 清理已移除文件并写受管清单。
 
 ---
 ## v1.2.0（2026-11-27）
@@ -84,8 +102,15 @@
 
 首个版本。
 
+### 新增
+
 - 四层破甲：`SessionStart`/`PreInvocation` 注入、`PreToolUse` 放行、`Stop` 续跑、`PostToolUse` 审计。
 - CLI：`status / install / apply / revert / uninstall / repair / prompt / doctor / serve / test-hook`。
 - 零依赖；无系统 Node 时回落到 `agy-node` 垫片或 `ELECTRON_RUN_AS_NODE`。
 - 补丁项状态机（applied / pending / drift / conflict / skipped）+ `*.agypurge.bak` 一次性备份。
 - 方法论来自 [dsh-purge](https://github.com/YuJunZhiXue/dsh-purge)（MIT），Antigravity 侧独立重写。
+
+### 已知问题（由后续版本修复）
+
+- 每次模型调用都注入覆盖稿，且默认强制续跑 → 思考链变长、token 消耗上升（v1.1.0 修复）。
+- 改动 `plugin.json` / `README` / `LICENSE` 后状态仍显示 applied（v1.1.0 修复）。

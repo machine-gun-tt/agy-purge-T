@@ -28,9 +28,10 @@
     "install.ps1",
     "install.sh",
     "README.md",
-    "README.en.md",
     "NOTICE.md",
-    "LICENSE"
+    "LICENSE",
+    "scripts",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "test": "node --test",

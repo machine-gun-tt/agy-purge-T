@@ -136,3 +136,21 @@ test('apply 把 v1 运行时配置迁移到 v3 并落盘', () => {
   const ctx = buildContext({ root });
   assert.equal(ctx.layers.continue, false);
 });
+
+test('apply 清理已从仓库移除的文件，并写安装清单', () => {
+  const { root } = sandbox();
+  const { ctx } = install({ root });
+
+  // 模拟旧版本遗留：仓库里已经删掉的文件
+  fs.writeFileSync(path.join(ctx.installDir, 'README.en.md'), 'stale\n', 'utf8');
+  fs.writeFileSync(path.join(ctx.installDir, 'hooks', 'gone.mjs'), 'stale\n', 'utf8');
+
+  const results = install({ root }).results;
+  const row = results.find((r) => r.id === 'plugin:files');
+  assert.match(row.detail, /清理 2 个已移除文件|清理 1 个已移除文件/);
+  assert.equal(fs.existsSync(path.join(ctx.installDir, 'README.en.md')), false);
+
+  const manifest = JSON.parse(fs.readFileSync(path.join(ctx.installDir, '.agy-install.json'), 'utf8'));
+  assert.ok(Array.isArray(manifest.files) && manifest.files.includes('plugin.json'));
+  assert.ok(!manifest.files.includes('.agy-install.json'), '清单不记录自己');
+});
