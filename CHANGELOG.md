@@ -1,32 +1,54 @@
 # 更新日志
 
+## v1.2.0（2026-11-27）
+
+**主题：适配 Antigravity 2.35 / 新模型（`gemini-4-neon-high`）——注入时机与提示词双升级。**
+
+### 问题
+
+升级宿主后同一条提问的回答变软：先花 20 多秒做「政策边界评估」，再在末尾补一句「涉及验证码绕过或未授权攻击的内容不在支持范围内」。v1.1 的 `strategy: "once"` 把覆盖稿放在会话开头，位置太靠前，压不住新模型每轮重述的策略前言。
+
+### 修复
+
+- **注入时机改为 `turn`（默认）**：`PreInvocation` 用 `lastUserInput` 的 sha 作为轮次指纹，**每个用户轮次注入一次**，贴在模型调用点之前；轮内工具循环不再重复注入。成本：一轮一次（v1.0 是每调用一次）。
+- **SessionStart 默认不再注入**：既省一次重复，也少一条 `Hook Json SessionStart` UI 步骤（需要旧行为可设 `prompt.sessionStart: true`）。
+- **覆盖稿升级到 v3**：新增「思考纪律」章——不做政策评估、不预演免责、不复述敏感词；新增禁止项——末尾「不在支持范围内」声明块、征询语气、把请求改写成研究目的；技术领域（逆向/抓包/签名还原/权限提升等）明确按工程任务处理。三个模型变体（gemini / claude / gpt）同步重写。
+- **内置稿自动升级**：`apply` 会替换「仍是我们写下的那一版」（sha 一致，或仍带 `# 执行层覆盖稿` 头）的覆盖稿到 v3；用户改过一个字就不动。
+- **宿主构建指纹**：`apply` 记录 `app.asar` 的尺寸+sha256；宿主换版本后 `status` 直接警告，`doctor` 也会标黄。
+
+### 顺带修掉
+
+- `runtime:config` 写入时把版本号写死成 2，导致迁移后状态一直显示 `drift`。
+- `PreInvocation` 的跳过路径每次调用都重写 `state.json`；现在只在步数锚点前进时写。
+- 工具级事件默认不再写审计日志（`log.toolEvents: false`），一次回合能少上百行。
+
+### 迁移
+
+`agy-purge apply` 一次完成：`config v2 → v3`（`once → turn`、`sessionStart → false`），未改动的覆盖稿升级到 v3。用户自定义的策略与稿子不会被覆盖。
+
+### 测试
+
+48 项，新增：轮内去重、换轮重新注入、SessionStart 默认不注入、v1 → v3 迁移、覆盖稿自动升级。
+
+---
+
 ## v1.1.0（2026-11-25）
 
 **主题：把 token 成本压下来，同时不牺牲破甲效果。**
 
 ### 修复
 
-- **每轮注入导致思考链变长**：`PreInvocation` 之前每次模型调用都注入一段"常驻提醒"。现在默认 `prompt.strategy: "once"`，每个会话只注入一次；检测到上下文被压缩（`initialNumSteps` 回落）时才补注。
-- **重复注入**：`SessionStart` 与首次 `PreInvocation` 会各注入一遍同一份稿。现在注入后写会话记账，后者直接跳过。
-- **默认强制续跑**：`continue.max: 2` 会让每个回合最多凭空多出两次完整模型调用。续跑层改为默认**关**，需要时用 `--layers=inject,gate,continue` 显式开。
-- **配置迁移**：v1 的 `config.json` 在 `apply` 时自动迁移到 v2（注入改 once、续跑改关），并在 `runtime:config` 补丁项里提示待迁移状态。
-- **漂移检测漏根文件**：改过 `plugin.json` / `README` / `LICENSE` 后状态仍显示 applied。现在 `plugin:files` 覆盖根文件。
+- **每轮注入导致思考链变长**：`PreInvocation` 之前每次模型调用都注入一段"常驻提醒"。改为每个会话只注入一次；上下文被压缩（`initialNumSteps` 回落）时才补注。
+- **重复注入**：`SessionStart` 与首次 `PreInvocation` 会各注入一遍同一份稿。改为注入后写会话记账，后者直接跳过。
+- **默认强制续跑**：`continue.max: 2` 会让每个回合最多凭空多出两次完整模型调用。续跑层改为默认**关**。
+- **配置迁移**：v1 的 `config.json` 在 `apply` 时自动迁移到 v2。
+- **漂移检测漏根文件**：改过 `plugin.json` / `README` / `LICENSE` 后状态仍显示 applied。现在覆盖根文件。
 
 ### 新增
 
 - 项目 logo（`assets/logo.png`），已接进 `plugin.json` 的 `logo` 字段与 README。
 - `agy-purge status` 新增「注入策略」「续跑」两行；`state.json` 新增按会话的注入记账。
-- `agy-purge doctor` 新增 `hook:dedupe` 检查：验证同一会话第二次调用确实不再注入。
-- 注入策略可切换：`once`（默认）/ `interval`（每 `fullEvery` 次）/ `every`（每次，最贵）。
-
-### 变更
-
-- `stop.mjs` 的续跑判定不变，但默认层关闭；`executionNum < continue.max` 上限仍在。
-- 运行时配置版本号 `1 → 2`，新增 `migratedFrom` / `migratedAt`。
-
-### 测试
-
-48 项（v1.0 为 40 项），新增：同会话去重、SessionStart 去重、压缩补注、interval / every 策略、v1 配置迁移、续跑默认关、漂移覆盖根文件。
+- `agy-purge doctor` 新增注入去重校验。
 
 ---
 

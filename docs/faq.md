@@ -23,6 +23,23 @@ agy-purge doctor     # 会验证同会话第二次调用确实没有注入
 { "prompt": { "strategy": "interval", "fullEvery": 3 } }
 ```
 
+## 宿主升级后回答突然变保守（多出「不在支持范围」、执行变犹豫）？
+
+这是宿主换构建 + 换模型导致的，不是钩子坏了。判据：
+
+```bash
+agy-purge status      # 看「注入策略」和警告里的宿主构建指纹变化
+agy-purge doctor      # host-build 标黄 = 宿主换过版本
+```
+
+处理顺序：
+
+1. `agy-purge apply`：重渲染 hooks、把运行时配置迁到 v3、把未改动的覆盖稿升级到 v3；
+2. 完全退出 Antigravity 再打开，新开会话；
+3. 还软就把注入频率拉满：`{ "prompt": { "strategy": "every" } }`（成本最高，但最贴脸）；
+4. 观察事件日志确认注入真的发生了：`<plugin_data>/agy-purge/log/events.jsonl` 里应有 `PreInvocation:new-turn`。
+
+为什么 v1.1 的 `once` 不够：新模型每轮开头会重述策略前言，`once` 的注入位置太靠前，被压过就表现为末尾免责声明。
 ## 装了之后完全没变化？
 
 按顺序查：

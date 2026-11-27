@@ -33,20 +33,22 @@ Zero dependencies, one CLI entry point, Node ≥ 18 (and if there is no Node, it
 
 v1.0 injected a "standing reminder" before **every** model call and forced up to two extra continuations per turn. Both cost real tokens, and the repeated directive makes the model re-reconcile its instructions on every iteration — visible as longer reasoning and slower turns.
 
-v1.1 fixes the defaults:
+v1.2 defaults:
 
-| Behavior | Cost | v1.1 |
+| Behavior | Cost | Now |
 | --- | --- | --- |
-| systemMessage before every call | every tool loop adds a fresh directive | `strategy: "once"` — one injection per conversation |
-| SessionStart and first PreInvocation both inject | duplicate text to reconcile | per-conversation ledger; second injection skipped |
+| systemMessage before every call | every tool loop adds a fresh directive | **once per user turn** (`strategy: "turn"`); tool loops inside a turn inject nothing |
+| SessionStart and first PreInvocation both inject | duplicate text, plus a redundant UI step | SessionStart is **off by default** |
 | context compaction | prompt may be squeezed out of the trajectory | re-inject only when `initialNumSteps` drops |
 | `continue.max: 2` | up to 2 extra model calls per turn | continuation layer **off** by default |
 
 ```json
-{ "prompt": { "strategy": "once" } }
+{ "prompt": { "strategy": "turn" } }
 ```
 
-`agy-purge status` prints the active strategy and continuation state; `agy-purge doctor` asserts that the second call in a conversation injects nothing at all.
+Why not plain `once`: after Antigravity 2.35 the newer models (`gemini-4-neon-high`) restate policy at the start of every turn. A single early injection loses to it — you get trailing "outside supported scope" disclaimers and hesitant execution. `turn` puts the override immediately before each model call, at the cost of one injection per turn.
+
+`agy-purge status` prints the strategy, continuation state and the host build fingerprint; `agy-purge doctor` asserts that a second call in the same turn injects nothing while a new turn does inject again.
 
 ## Four layers
 

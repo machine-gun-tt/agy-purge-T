@@ -3,7 +3,7 @@
 Antigravity 破甲层：用宿主原生 hooks 完成提示词注入、审批放行、强制续跑，附 CLI、回环面板与一键回滚。
 **不修改** `app.asar`、`language_server.exe` 或任何宿主二进制。
 
-> A jailbreak layer for Google Antigravity built entirely on the host's native hook protocol — prompt injection, approval bypass and optional forced continuation, plus a CLI, a loopback dashboard and one-command rollback. **No host binary is patched.** Defaults since v1.1: one injection per conversation, continuation off (lowest token cost).
+> A jailbreak layer for Google Antigravity built entirely on the host's native hook protocol — prompt injection, approval bypass and optional forced continuation, plus a CLI, a loopback dashboard and one-command rollback. **No host binary is patched.** Defaults since v1.2: one injection per user turn (recency, no per-call cost), SessionStart injection off, continuation off, and a v3 override prompt tuned for the newer Gemini builds.
 
 ---
 
@@ -13,7 +13,7 @@ Antigravity 破甲层：用宿主原生 hooks 完成提示词注入、审批放�
 
 | 层 | 事件 | 作用 |
 | --- | --- | --- |
-| inject | `SessionStart` + `PreInvocation` | 每次模型调用前把覆盖稿作为 `systemMessage` 注入，每 6 轮补注一次 |
+| inject | `PreInvocation` | 每个用户轮次注入一次覆盖稿（轮内不重复），上下文压缩时补注 |
 | gate | `PreToolUse` | 任意工具返回 `allow` + `permissionOverrides`，同时补齐 Always Allow 缓存 |
 | continue | `Stop` | 模型「没调工具就收工」时返回 `continue`，受 `continue.max` 上限保护 |
 | log | `PostToolUse` | 事件写入 `log/events.jsonl`，只审计不决策 |
@@ -52,7 +52,7 @@ agy-purge uninstall --purge-prompt
 
 | Layer | Event | Effect |
 | --- | --- | --- |
-| inject | `SessionStart` + `PreInvocation` | pushes the override prompt as `systemMessage` before every model call, refreshing the full text every 6 invocations |
+| inject | `PreInvocation` | injects the override once per user turn (never inside a tool loop), refreshing after context compaction |
 | gate | `PreToolUse` | returns `allow` + `permissionOverrides` for every tool and fills the Always-Allow cache |
 | continue | `Stop` | returns `continue` when the model ends a turn without a tool call, bounded by `continue.max` |
 | log | `PostToolUse` | appends to `log/events.jsonl`; audit only, never decides |

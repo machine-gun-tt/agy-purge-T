@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 /**
- * SessionStart：新会话的第一次注入。
+ * SessionStart：v1.2 起默认**不注入**。
  *
- * 注入后会写会话记账，PreInvocation 看到记账就直接跳过——这消除了 v1.0 里
- * 「SessionStart 注入一次 + 首次 PreInvocation 再注入一次」的重复。
+ * 原因：SessionStart 发生在用户消息之前，注入后模型还要「跨过」整段用户消息才回答；
+ * 而 PreInvocation 每轮开始时注入的位置更贴近调用点，recency 更好，成本一样是每轮一次。
+ * 少注一次也顺手消掉了会话开头那条多余的 "Hook Json SessionStart" 步骤。
+ *
+ * 需要旧行为就设 `prompt.sessionStart: true`。
  */
 import {
   conversationKey,
@@ -13,20 +16,24 @@ import {
   readState,
   resolvePrompt,
   runHook,
+  turnKey,
   writeState,
 } from './lib/io.mjs';
 
 runHook('SessionStart', (payload) => {
   const cfg = readConfig();
-  if (!cfg.layers?.inject || cfg.prompt?.sessionStart === false) return {};
+  if (!cfg.layers?.inject || cfg.prompt?.sessionStart !== true) {
+    logEvent('SessionStart:skip', payload);
+    return {};
+  }
 
   const prompt = resolvePrompt(payload.modelName, cfg);
   if (!prompt.text) return {};
 
   const key = conversationKey(payload);
-  const steps = Number(payload.initialNumSteps) || 0;
   const state = markConversation(readState(), key, {
-    steps,
+    steps: Number(payload.initialNumSteps) || 0,
+    turn: turnKey(payload),
     mode: 'session-start',
     source: prompt.source,
     variant: prompt.variant,

@@ -77,13 +77,26 @@ test('同一会话只注入一次（省 token 的核心）', () => {
   assert.equal(other.parsed?.injectSteps?.length, 1, '新会话应重新注入');
 });
 
-test('SessionStart 之后 PreInvocation 不重复注入', () => {
+test('SessionStart 默认不注入；显式开启后与 PreInvocation 不重复', () => {
   const data = sandbox();
-  const start = runHook('session-start.mjs', { ...BASE, conversationId: 'c-sess' }, { data });
-  assert.equal(start.parsed?.injectSteps?.length, 1);
+  const off = runHook('session-start.mjs', { ...BASE, conversationId: 'c-sess-off' }, { data });
+  assert.deepEqual(off.parsed, {}, 'v1.2 起 SessionStart 默认不注入');
 
-  const next = runHook('pre-invocation.mjs', { ...BASE, conversationId: 'c-sess', invocationNum: 0 }, { data });
-  assert.deepEqual(next.parsed, {});
+  writeCfg(data, { version: 3, prompt: { sessionStart: true } });
+  const on = runHook('session-start.mjs', { ...BASE, conversationId: 'c-sess-on' }, { data });
+  assert.equal(on.parsed?.injectSteps?.length, 1);
+
+  const next = runHook('pre-invocation.mjs', { ...BASE, conversationId: 'c-sess-on', invocationNum: 0 }, { data });
+  assert.deepEqual(next.parsed, {}, '同一轮已经注入过，不再重复');
+});
+
+test('同一会话换了用户输入就重新注入（每轮一次）', () => {
+  const data = sandbox();
+  runHook('pre-invocation.mjs', { ...BASE, conversationId: 'c-turn', lastUserInput: 'turn-1' }, { data });
+  const sameTurn = runHook('pre-invocation.mjs', { ...BASE, conversationId: 'c-turn', lastUserInput: 'turn-1', invocationNum: 1 }, { data });
+  assert.deepEqual(sameTurn.parsed, {}, '轮内不重复');
+  const newTurn = runHook('pre-invocation.mjs', { ...BASE, conversationId: 'c-turn', lastUserInput: 'turn-2' }, { data });
+  assert.equal(newTurn.parsed?.injectSteps?.length, 1, '新一轮重新钉位阶');
 });
 
 test('上下文被压缩后重新注入', () => {
@@ -122,11 +135,7 @@ test('用户 prompt-inject.md 优先于按模型分稿', () => {
   assert.match(text, /CUSTOM-OVERRIDE-MARKER/);
 });
 
-test('SessionStart 也注入', () => {
-  const data = sandbox();
-  const out = runHook('session-start.mjs', { ...BASE, conversationId: 'c-start' }, { data });
-  assert.ok((out.parsed?.injectSteps?.[0]?.systemMessage?.systemMessage || '').length > 100);
-});
+
 
 /* ------------------------------------------------------------------ 审批层 */
 

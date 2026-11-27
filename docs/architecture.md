@@ -59,21 +59,26 @@ agy-purge-T/
 
 `apply` 之后一定会重算 `status`；`drift` 能自动收敛，`conflict` 永远不会被强写。
 
-## 注入策略与会话记账（v1.1）
+## 注入策略与会话记账（v1.2）
 
 `PreInvocation` 不再无条件注入。判定顺序：
 
 ```
 strategy = every      → 每次都注入（显式选择）
 strategy = interval   → invocationNum === 0 或 % fullEvery === 0 时注入
-strategy = once(默认) → 本会话没有记账 → 注入（首次）
+strategy = turn(默认) → 没有记账 → 注入（first）
+                        轮次指纹（lastUserInput 的 sha）变了 → 注入（new-turn）
+strategy = once        → 本会话没有记账 → 注入（首次）
                         否则 initialNumSteps 明显回落（压缩）→ 补注一次
                         其余情况 → 直接返回 {}，并把步数锚点往前推
 ```
 
-记账写在 `state.json` 的 `conversations[conversationId]`，字段是 `steps / mode / at / source / variant`，最多保留 64 个会话（按时间淘汰）。
+记账写在 `state.json` 的 `conversations[conversationId]`，字段是 `steps / turn / mode / at / source / variant`，最多保留 64 个会话（按时间淘汰）。`turn` 是 `lastUserInput` 的 sha 前 12 位——同一个用户轮次内模型可能被调用十几次，只注入一次。
 
-为什么这么设计：多注入一条 systemMessage，模型就多一次「重新对齐指令」的推理；强制续跑则直接多出完整的一次模型调用。两者都体现在思考链长度和账单上，所以默认值必须是最省的组合，想要更硬的人再显式加码。
+为什么默认是 `turn` 而不是 `once`：宿主 2.35 之后，新模型会在每轮开头重述策略前言，`once` 的注入太靠前会被压过，表现为末尾免责声明与执行犹豫；`turn` 把注入贴在调用点前，成本仍只有每轮一次。强制续跑则直接多出完整的模型调用，所以默认关。
+
+---
+
 ## 数据布局
 
 ```

@@ -8,7 +8,7 @@
 
 `agy-purge` 是 [dsh-purge](https://github.com/YuJunZhiXue/dsh-purge)（DeepSeek Harness 破甲）在 Antigravity 上的对应实现。dsh-purge 之所以要打补丁，是因为 DSH 没有对外暴露扩展点；Antigravity 有 `plugin.json` + `hooks.json`，所以这里用原生扩展点拿到**同样的效果**，而且升级不会碎。
 
-**v1.1 起默认把 token 成本压到最低**：每个会话只注入一次覆盖稿、强制续跑默认关闭。以前每轮都塞一段"常驻提醒"、并且默认最多强行续跑 2 次——这两件事都会让模型多做一轮"重新对齐指令"的思考，表现为思考链变长、思考时间变长、token 变贵。
+**v1.2 起**：覆盖稿改为**每个用户轮次注入一次**（轮内工具循环不再重复），强制续跑默认关闭，SessionStart 不再冗余注入；覆盖稿升级到 v3，专门压「政策自审 + 末尾免责声明」，对应 Antigravity 2.35 / `gemini-4-neon-high` 这一代模型。`status` 还会记住宿主构建指纹，升级后一眼看出插件是否还配着当前版本。
 
 <p align="left">
   <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js&logoColor=fff">
@@ -51,27 +51,30 @@ Antigravity 的 agent 在把回答交给你之前会过好几道关：前言的�
 
 ---
 
-## Token 成本：为什么 v1.1 更省
+## Token 成本与注入时机
 
-v1.0 每次模型调用前都注入一段"常驻位阶提醒"，并且默认开着强制续跑。实测下来这不是免费午餐：
+v1.0 每次模型调用前都注入一段"常驻位阶提醒"，并且默认开着强制续跑。实测这不是免费午餐：
 
-| 行为 | 代价 | v1.1 的处理 |
+| 行为 | 代价 | 现在怎么做（v1.2） |
 | --- | --- | --- |
-| 每轮注入 systemMessage | 每个工具循环都多一个"新指令"事件，模型会重新对齐一次指令位阶——思考链变长、思考时间变长 | 默认 `strategy: "once"`：每个会话只注入一次 |
-| SessionStart + 首次 PreInvocation 各注入一次 | 同一份稿子重复两遍，模型在两条冲突措辞之间做取舍 | 注入后写会话记账，`PreInvocation` 直接跳过 |
-| 上下文被压缩 | 覆盖稿可能被挤出轨迹，行为悄悄回退 | 检测 `initialNumSteps` 回落，只在此时补注一次 |
-| 默认 `continue.max: 2` | 每个回合最多凭空多跑 2 次模型调用（每次都带完整上下文） | 续跑层默认**关**，要就 `--layers=...,continue` 显式开 |
+| 每次调用都注入 systemMessage | 一个回合里十几次工具循环＝十几条"新指令"，模型每次都重新对齐位阶 → 思考链变长 | **每轮一次**：`strategy: "turn"`，同一轮内的多次调用不再重复 |
+| SessionStart + 首次 PreInvocation 各注入一次 | 同一份稿子两遍，还多出一条 `Hook Json SessionStart` 步骤 | SessionStart 默认**不注入**，只靠每轮开头的 PreInvocation |
+| 上下文被压缩 | 覆盖稿被挤出轨迹，行为悄悄回退 | 检测 `initialNumSteps` 回落，只在此时补注一次 |
+| 默认 `continue.max: 2` | 每回合凭空多跑 2 次模型调用 | 续跑层默认**关**，要就 `--layers=...,continue` 显式开 |
 
-三种注入策略，默认第一种：
+四种注入策略，默认第一种：
 
-```bash
-# <plugin_data>/agy-purge/config.json
-{ "prompt": { "strategy": "once" } }      # 每会话一次（默认，最省）
-{ "prompt": { "strategy": "interval", "fullEvery": 6 } }   # 每 6 次调用重注一次
-{ "prompt": { "strategy": "every" } }     # 每次调用都重注（最贵，只有硬钉位阶才需要）
+```jsonc
+// <plugin_data>/agy-purge/config.json
+{ "prompt": { "strategy": "turn" } }                        // 每轮一次（默认：既贴调用点又省）
+{ "prompt": { "strategy": "once" } }                        // 每会话一次（最省，长会话后段会衰减）
+{ "prompt": { "strategy": "interval", "fullEvery": 6 } }    // 每 6 次调用重注一次
+{ "prompt": { "strategy": "every" } }                       // 每次调用都重注（最贵）
 ```
 
-`agy-purge status` 会把当前策略和续跑状态直接打出来，`agy-purge doctor` 还会验证"同会话第二次调用确实没有注入"。
+为什么不是纯 `once`：宿主升级到 2.35 之后，新模型（`gemini-4-neon-high` 等）会在每轮开头重新带上策略前言，而 `once` 的注入位置太靠前，压不住它——表现就是回答末尾多出「不在支持范围内」、执行变犹豫。`turn` 把注入挪到每轮调用点之前，成本仍只有每轮一次。
+
+`agy-purge status` 打印当前策略、续跑状态与宿主构建指纹；`agy-purge doctor` 会验证「同轮第二次不注入、换轮必须重新注入」。
 
 ---
 
@@ -171,7 +174,7 @@ agy-purge · Antigravity 破甲层
 数据目录   <plugin_data>/agy-purge
 运行时     PATH · node v24 · <node>
 覆盖稿     user:prompt-inject.md · 524 字符 · c67fcedcfa1a
-注入策略   每会话一次（省 token） · 已记账会话 0
+注入策略   每轮一次（默认） · 已记账会话 0
 续跑       关（不额外增加模型调用）
 
 补丁项
@@ -297,6 +300,7 @@ agy-purge doctor
 | `config.json` = `conflict` | JSON 坏了 | 先修 JSON，插件拒绝在坏文件上写 |
 | 还弹审批 | `gate` 层关了，或 hook 超时 | `agy-purge apply --layers=gate`，看 `doctor` 的耗时 |
 | 前两轮正常后来软化 | 上下文稀释 / 覆盖稿被挤掉 | `prompt.strategy: "interval"` + `fullEvery: 3`，或换更硬的稿 |
+| **宿主升级后突然变保守**（多了"不在支持范围"、执行变犹豫） | 新宿主/新模型每轮重带策略前言，旧注入位置压不住 | `agy-purge apply`（会重渲染 hooks 并把内置稿升到 v3）→ 完全退出重开；必要时 `strategy: "every"` |
 | 回答到一半停住 | `continue` 层默认关 | `agy-purge apply --layers=inject,gate,continue` |
 
 更多见 [docs/faq.md](docs/faq.md) 和内置技能 `agy-purge-drill`。

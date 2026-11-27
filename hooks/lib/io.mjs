@@ -7,6 +7,7 @@
  *  - 不同 Antigravity 版本对 systemMessage.metadata 的处理不一致（已知 2.31.0
  *    会因 metadata map 抛 panic），因此本插件只输出纯字符串 systemMessage。
  */
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -59,21 +60,23 @@ export function expandHome(p) {
 /* ------------------------------------------------------------------ 配置 */
 
 export const DEFAULT_CONFIG = {
-  version: 2,
+  version: 3,
   layers: { inject: true, gate: true, continue: false, log: true },
   prompt: {
-    // once：每个会话只在 SessionStart / 首次 PreInvocation 注入一次（默认，最省 token）
+    // turn：每个用户轮次注入一次（默认）。轮内多次模型调用不再重复，兼顾 recency 与成本
+    // once：每个会话一次（最省，但长会话后段会衰减）
     // interval：每 fullEvery 次调用重注一次
-    // every：每次调用都重注（最贵，只有需要硬钉位阶时才开）
-    strategy: 'once',
+    // every：每次调用都重注（最贵，硬钉位阶时用）
+    strategy: 'turn',
     fullEvery: 6,
-    sessionStart: true,
+    sessionStart: false,
     refreshOnCompaction: true,
+    autoUpgrade: true,
     variant: 'auto',
   },
   gate: { autoAllow: true, askPatterns: [], denyPatterns: [] },
   continue: { max: 2 },
-  log: { enabled: true, maxBytes: 262144 },
+  log: { enabled: true, toolEvents: false, maxBytes: 262144 },
 };
 
 const MAX_CONVERSATIONS = 64;
@@ -82,24 +85,53 @@ export function configPath() {
   return path.join(dataDir(), 'config.json');
 }
 
-/** v1 → v2 迁移：老版本每次调用都注入、且默认强制续跑，两者都会烧 token。 */
+/**
+ * 配置迁移。逐级补齐，不覆盖用户改过的值：
+ *   v1 → v2：注入改 once、续跑默认关（v1 每次调用都注入 + 默认续跑，烧 token）
+ *   v2 → v3：注入改 turn、SessionStart 默认不注入（v2 的 once 在长会话里压不住新宿主策略）
+ */
 export function migrateConfig(input) {
   const cfg = { ...(input || {}) };
-  if ((cfg.version || 1) >= 2) return { config: cfg, migrated: false };
-  cfg.version = 2;
-  cfg.prompt = { ...DEFAULT_CONFIG.prompt, ...(cfg.prompt || {}) };
-  if ((input?.prompt || {}).strategy === undefined) cfg.prompt.strategy = 'once';
-  if ((input?.prompt || {}).refreshOnCompaction === undefined) cfg.prompt.refreshOnCompaction = true;
-  cfg.layers = { ...DEFAULT_CONFIG.layers, ...(cfg.layers || {}) };
-  if ((input?.layers || {}).continue === undefined || input.layers.continue === true) {
-    // 老默认是「开」；强制续跑会凭空多出模型调用，迁移时关掉，要就手动开回来
-    cfg.layers.continue = false;
+  const from = Number(cfg.version) || 1;
+  if (from >= 3) return { config: cfg, migrated: false };
+
+  if (from < 2) {
+    cfg.version = 2;
+    cfg.prompt = { ...DEFAULT_CONFIG.prompt, ...(cfg.prompt || {}) };
+    if ((input?.prompt || {}).strategy === undefined) cfg.prompt.strategy = 'once';
+    if ((input?.prompt || {}).refreshOnCompaction === undefined) cfg.prompt.refreshOnCompaction = true;
+    cfg.layers = { ...DEFAULT_CONFIG.layers, ...(cfg.layers || {}) };
+    if ((input?.layers || {}).continue === undefined || input.layers.continue === true) {
+      cfg.layers.continue = false;
+    }
+    cfg.continue = { ...DEFAULT_CONFIG.continue, ...(cfg.continue || {}) };
+    cfg.log = { ...DEFAULT_CONFIG.log, ...(cfg.log || {}) };
+    cfg.gate = { ...DEFAULT_CONFIG.gate, ...(cfg.gate || {}) };
+    cfg.migratedFrom = from;
+    cfg.migratedAt = new Date().toISOString();
   }
-  cfg.continue = { ...DEFAULT_CONFIG.continue, ...(cfg.continue || {}) };
-  cfg.log = { ...DEFAULT_CONFIG.log, ...(cfg.log || {}) };
-  cfg.gate = { ...DEFAULT_CONFIG.gate, ...(cfg.gate || {}) };
-  cfg.migratedFrom = input?.version || 1;
-  cfg.migratedAt = new Date().toISOString();
+
+  if (from < 3) {
+    cfg.version = 3;
+    cfg.prompt = { ...DEFAULT_CONFIG.prompt, ...(cfg.prompt || {}) };
+    // v2 的默认是 once + SessionStart 注入；只在用户没改过时才升级
+    if ((input?.prompt || {}).strategy === undefined || input.prompt.strategy === 'once') {
+      cfg.prompt.strategy = 'turn';
+    }
+    if ((input?.prompt || {}).sessionStart === undefined || input.prompt.sessionStart === true) {
+      cfg.prompt.sessionStart = false;
+    }
+    if ((input?.prompt || {}).autoUpgrade === undefined) cfg.prompt.autoUpgrade = true;
+    cfg.layers = { ...DEFAULT_CONFIG.layers, ...(cfg.layers || {}) };
+    cfg.continue = { ...DEFAULT_CONFIG.continue, ...(cfg.continue || {}) };
+    cfg.gate = { ...DEFAULT_CONFIG.gate, ...(cfg.gate || {}) };
+    cfg.log = { ...DEFAULT_CONFIG.log, ...(cfg.log || {}) };
+    if (from >= 2) {
+      cfg.migratedFrom = cfg.migratedFrom ?? 2;
+      cfg.migratedAt = cfg.migratedAt ?? new Date().toISOString();
+    }
+  }
+
   return { config: cfg, migrated: true };
 }
 
@@ -209,6 +241,17 @@ export function conversationKey(payload) {
   return `anon:${ws || 'unknown'}`;
 }
 
+/**
+ * 一个「用户轮次」的指纹。PreInvocation 靠它判断是不是新一轮：
+ * 同一轮里模型可能被调用很多次（工具循环），每轮只在第一次注入，
+ * 既保住「紧贴用户消息」的位阶优势，又不会每调一次就烧一遍 token。
+ */
+export function turnKey(payload) {
+  const text = String(payload?.lastUserInput || '');
+  if (!text.trim()) return '';
+  return crypto.createHash('sha256').update(text).digest('hex').slice(0, 12);
+}
+
 export function getConversation(state, key) {
   const map = state?.conversations;
   if (!map || typeof map !== 'object') return null;
@@ -240,6 +283,9 @@ export function advanceAnchor(state, key, steps) {
 export function logEvent(event, payload = {}) {
   const cfg = readConfig();
   if (!cfg.layers?.log || !cfg.log?.enabled) return;
+  // 工具级事件默认不记：一次回合能刷上百行，磁盘和噪音都不值当
+  const isToolEvent = event === 'PreToolUse' || event === 'PostToolUse';
+  if (isToolEvent && cfg.log?.toolEvents !== true) return;
   try {
     const dir = path.join(dataDir(), 'log');
     fs.mkdirSync(dir, { recursive: true });
@@ -258,6 +304,7 @@ export function logEvent(event, payload = {}) {
       conversationId: payload.conversationId || '',
       modelName: payload.modelName || '',
       invocationNum: payload.invocationNum ?? null,
+      turn: turnKey(payload) ? turnKey(payload).slice(0, 6) : '',
       tool: payload.toolCall?.name || '',
       cwd: payload.cwd || '',
     };

@@ -1,7 +1,7 @@
 {
   "name": "agy-purge",
   "displayName": "agy-purge",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Antigravity 破甲：PreInvocation 注入覆盖提示词、PreToolUse 常放行、Stop 强制续跑，附 CLI / 本地面板 / 一键回滚。",
   "logo": "assets/logo.png",
   "author": {
